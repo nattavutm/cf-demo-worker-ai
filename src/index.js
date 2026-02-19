@@ -2,6 +2,67 @@ export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
 
+        if (url.pathname === "/api/chat") {
+            if (request.method === "OPTIONS") {
+                return new Response(null, {
+                    status: 204,
+                    headers: {
+                        "access-control-allow-origin": "*",
+                        "access-control-allow-methods": "POST, OPTIONS",
+                        "access-control-allow-headers": "content-type",
+                    },
+                });
+            }
+
+            if (request.method !== "POST") {
+                return new Response("Method Not Allowed", { status: 405 });
+            }
+
+            try {
+                const body = await request.json();
+                const messages = Array.isArray(body?.messages) ? body.messages : [];
+
+                const system = {
+                    role: "system",
+                    content: "You are a helpful assistant.",
+                };
+
+                const promptMessages = [system, ...messages]
+                    .filter((m) => m && (m.role === "user" || m.role === "assistant" || m.role === "system") && typeof m.content === "string")
+                    .map((m) => ({ role: m.role, content: m.content }));
+
+                const model = "@cf/meta/llama-3.1-8b-instruct";
+                const aiResult = await env.AI.run(model, {
+                    messages: promptMessages,
+                });
+
+                const reply =
+                    aiResult?.response ??
+                    aiResult?.result ??
+                    aiResult?.output ??
+                    (typeof aiResult === "string" ? aiResult : JSON.stringify(aiResult));
+
+                return Response.json(
+                    { reply },
+                    {
+                        headers: {
+                            "access-control-allow-origin": "*",
+                        },
+                    }
+                );
+            } catch (err) {
+                return Response.json(
+                    { error: "Chat request failed" },
+                    {
+                        status: 500,
+                        headers: {
+                            "access-control-allow-origin": "*",
+                        },
+                    }
+                );
+            }
+        }
+
         // Simple routing for static assets
         if (url.pathname === "/style.css") {
             return new Response(STYLES, {
@@ -594,6 +655,24 @@ function createBubble({ role, text }) {
     messages.scrollTop = messages.scrollHeight;
 }
 
+const chatHistory = [];
+
+async function callChatApi() {
+    const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json'
+        },
+        body: JSON.stringify({ messages: chatHistory })
+    });
+
+    if (!resp.ok) {
+        throw new Error('Bad response: ' + resp.status);
+    }
+
+    return await resp.json();
+}
+
 function sendMessage() {
     const input = document.getElementById('chat-input');
     const sendBtn = document.getElementById('chat-send');
@@ -608,14 +687,21 @@ function sendMessage() {
 
     createBubble({ role: 'user', text });
 
-    window.setTimeout(() => {
-        createBubble({
-            role: 'assistant',
-            text: 'Placeholder response. Connect this UI to Cloudflare Workers AI when ready.'
+    chatHistory.push({ role: 'user', content: text });
+
+    callChatApi()
+        .then((data) => {
+            const reply = (data && data.reply) ? String(data.reply) : 'No reply returned.';
+            createBubble({ role: 'assistant', text: reply });
+            chatHistory.push({ role: 'assistant', content: reply });
+        })
+        .catch(() => {
+            createBubble({ role: 'assistant', text: 'Error: failed to reach AI.' });
+        })
+        .finally(() => {
+            sendBtn.disabled = false;
+            input.focus();
         });
-        sendBtn.disabled = false;
-        input.focus();
-    }, 450);
 }
 
 window.addEventListener('resize', init);
@@ -624,7 +710,7 @@ animate();
 
 createBubble({
     role: 'assistant',
-    text: 'Hi! This is a chatbot UI demo. There is no AI connected yet.'
+    text: 'Hi! Ask me anything.'
 });
 
 const sendBtn = document.getElementById('chat-send');

@@ -7,5 +7,3 @@ binding = "AI"
 
 [vars]
 ENVIRONMENT = "production"
-AI_GATEWAY_BASE_URL = "https://gateway.ai.cloudflare.com/v1/13ebdde3f1c7214069372d80970c4b28/cf-demo-ai-suite-ai-search/compat"
-AI_GATEWAY_MODEL = "gpt-4o-mini"

@@ -21,6 +21,7 @@ export default {
             try {
                 const body = await request.json();
                 const messages = Array.isArray(body?.messages) ? body.messages : [];
+                const requestedModel = typeof body?.model === "string" ? body.model : "";
 
                 const system = {
                     role: "system",
@@ -31,71 +32,24 @@ export default {
                     .filter((m) => m && (m.role === "user" || m.role === "assistant" || m.role === "system") && typeof m.content === "string")
                     .map((m) => ({ role: m.role, content: m.content }));
 
-                const gatewayBaseUrl = env.AI_GATEWAY_BASE_URL;
-                const gatewayModel = env.AI_GATEWAY_MODEL;
+                const allowedModels = new Set([
+                    "@cf/meta/llama-3.1-8b-instruct",
+                    "@cf/meta/llama-3.1-70b-instruct",
+                    "@cf/mistral/mistral-7b-instruct-v0.2",
+                ]);
 
-                if (!gatewayBaseUrl || !gatewayModel) {
-                    return Response.json(
-                        {
-                            error: "AI Gateway is not configured. Set AI_GATEWAY_BASE_URL and AI_GATEWAY_MODEL.",
-                        },
-                        {
-                            status: 500,
-                            headers: {
-                                "access-control-allow-origin": "*",
-                            },
-                        }
-                    );
-                }
+                const defaultModel = "@cf/meta/llama-3.1-8b-instruct";
+                const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
 
-                const base = gatewayBaseUrl.endsWith("/") ? gatewayBaseUrl : `${gatewayBaseUrl}/`;
-                const endpoint = new URL("v1/chat/completions", base).toString();
-
-                const headers = {
-                    "content-type": "application/json",
-                };
-
-                if (env.AI_GATEWAY_API_KEY) {
-                    headers.authorization = `Bearer ${env.AI_GATEWAY_API_KEY}`;
-                }
-
-                const upstreamResp = await fetch(endpoint, {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify({
-                        model: gatewayModel,
-                        messages: promptMessages,
-                    }),
+                const aiResult = await env.AI.run(model, {
+                    messages: promptMessages,
                 });
 
-                if (!upstreamResp.ok) {
-                    let details;
-                    try {
-                        details = await upstreamResp.text();
-                    } catch (_) {
-                        details = undefined;
-                    }
-                    return Response.json(
-                        {
-                            error: "Upstream AI Gateway request failed",
-                            status: upstreamResp.status,
-                            details,
-                        },
-                        {
-                            status: 502,
-                            headers: {
-                                "access-control-allow-origin": "*",
-                            },
-                        }
-                    );
-                }
-
-                const data = await upstreamResp.json();
                 const reply =
-                    data?.choices?.[0]?.message?.content ??
-                    data?.choices?.[0]?.text ??
-                    data?.response ??
-                    (typeof data === "string" ? data : JSON.stringify(data));
+                    aiResult?.response ??
+                    aiResult?.result ??
+                    aiResult?.output ??
+                    (typeof aiResult === "string" ? aiResult : JSON.stringify(aiResult));
 
                 return Response.json(
                     { reply },
@@ -360,6 +314,22 @@ body {
     padding: 14px;
     border-top: 1px solid rgba(0, 0, 0, 0.08);
     background: rgba(255,255,255,0.85);
+}
+
+.chat-model {
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 14px;
+    padding: 12px 12px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.95rem;
+    outline: none;
+    background: rgba(255,255,255,0.95);
+    color: var(--text-main);
+}
+
+.chat-model:focus {
+    border-color: rgba(71, 150, 227, 0.45);
+    box-shadow: 0 0 0 4px rgba(71, 150, 227, 0.15);
 }
 
 .chat-input {
@@ -713,12 +683,14 @@ function createBubble({ role, text }) {
 const chatHistory = [];
 
 async function callChatApi() {
+    const modelSelect = document.getElementById('chat-model');
+    const model = modelSelect ? modelSelect.value : '';
     const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: {
             'content-type': 'application/json'
         },
-        body: JSON.stringify({ messages: chatHistory })
+        body: JSON.stringify({ messages: chatHistory, model })
     });
 
     if (!resp.ok) {
@@ -767,6 +739,25 @@ createBubble({
     role: 'assistant',
     text: 'Hi! Ask me anything.'
 });
+
+const modelSelect = document.getElementById('chat-model');
+if (modelSelect) {
+    const models = [
+        { id: '@cf/meta/llama-3.1-8b-instruct', label: 'Llama 3.1 8B' },
+        { id: '@cf/meta/llama-3.1-70b-instruct', label: 'Llama 3.1 70B' },
+        { id: '@cf/mistral/mistral-7b-instruct-v0.2', label: 'Mistral 7B' },
+    ];
+
+    modelSelect.innerHTML = '';
+    models.forEach((m) => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label;
+        modelSelect.appendChild(opt);
+    });
+
+    modelSelect.value = models[0].id;
+}
 
 const sendBtn = document.getElementById('chat-send');
 const input = document.getElementById('chat-input');
@@ -827,6 +818,7 @@ const HTML = `<!DOCTYPE html>
             <div class="chat-panel">
                 <div class="chat-messages" id="chat-messages"></div>
                 <div class="chat-composer">
+                    <select class="chat-model" id="chat-model" aria-label="Model"></select>
                     <input class="chat-input" id="chat-input" type="text" placeholder="Type your message..." autocomplete="off" />
                     <button class="chat-send" id="chat-send" type="button">Send</button>
                 </div>

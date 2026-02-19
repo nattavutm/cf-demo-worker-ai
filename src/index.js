@@ -31,16 +31,71 @@ export default {
                     .filter((m) => m && (m.role === "user" || m.role === "assistant" || m.role === "system") && typeof m.content === "string")
                     .map((m) => ({ role: m.role, content: m.content }));
 
-                const model = "@cf/meta/llama-3.1-8b-instruct";
-                const aiResult = await env.AI.run(model, {
-                    messages: promptMessages,
+                const gatewayBaseUrl = env.AI_GATEWAY_BASE_URL;
+                const gatewayModel = env.AI_GATEWAY_MODEL;
+
+                if (!gatewayBaseUrl || !gatewayModel) {
+                    return Response.json(
+                        {
+                            error: "AI Gateway is not configured. Set AI_GATEWAY_BASE_URL and AI_GATEWAY_MODEL.",
+                        },
+                        {
+                            status: 500,
+                            headers: {
+                                "access-control-allow-origin": "*",
+                            },
+                        }
+                    );
+                }
+
+                const base = gatewayBaseUrl.endsWith("/") ? gatewayBaseUrl : `${gatewayBaseUrl}/`;
+                const endpoint = new URL("v1/chat/completions", base).toString();
+
+                const headers = {
+                    "content-type": "application/json",
+                };
+
+                if (env.AI_GATEWAY_API_KEY) {
+                    headers.authorization = `Bearer ${env.AI_GATEWAY_API_KEY}`;
+                }
+
+                const upstreamResp = await fetch(endpoint, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({
+                        model: gatewayModel,
+                        messages: promptMessages,
+                    }),
                 });
 
+                if (!upstreamResp.ok) {
+                    let details;
+                    try {
+                        details = await upstreamResp.text();
+                    } catch (_) {
+                        details = undefined;
+                    }
+                    return Response.json(
+                        {
+                            error: "Upstream AI Gateway request failed",
+                            status: upstreamResp.status,
+                            details,
+                        },
+                        {
+                            status: 502,
+                            headers: {
+                                "access-control-allow-origin": "*",
+                            },
+                        }
+                    );
+                }
+
+                const data = await upstreamResp.json();
                 const reply =
-                    aiResult?.response ??
-                    aiResult?.result ??
-                    aiResult?.output ??
-                    (typeof aiResult === "string" ? aiResult : JSON.stringify(aiResult));
+                    data?.choices?.[0]?.message?.content ??
+                    data?.choices?.[0]?.text ??
+                    data?.response ??
+                    (typeof data === "string" ? data : JSON.stringify(data));
 
                 return Response.json(
                     { reply },

@@ -798,6 +798,7 @@ const HTML = `<!DOCTYPE html>
                 <div class="nav-item">
                     <a href="#use-cases">Use Cases <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline; vertical-align:middle; margin-left:2px;"><path d="m6 9 6 6 6-6"/></svg></a>
                     <div class="dropdown">
+                        <a href="https://worker-ai.cfdemor5r5.online/" target="_blank">Worker AI</a>
                         <a href="https://ai-search.cfdemor5r5.online/" target="_blank">AI Search</a>
                         <a href="https://dash.cloudflare.com/13ebdde3f1c7214069372d80970c4b28/ai/ai-gateway/gateways/cf-demo-ai-suite-ai-search/overview" target="_blank">AI Gateway</a>
                         <a href="https://steam.cfdemor5r5.online/" target="_blank">Stream</a>
